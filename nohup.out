@@ -732,7 +732,13 @@ java.lang.Throwable
 	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:105)
 	at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:92)
 
-2023-05-16 21:26:14,362 [ 556137]   WARN - #c.i.u.x.Binding - no accessors for com.intellij.openapi.projectRoots.Sdk
+2023-05-16 21:26:14,362 [ 556137]   WARN - #c.i.u.x.Binding - no accessors for com.intellij.openapi.projectRoots.Sd
+
+
+
+
+
+k
 2023-05-16 21:26:29,907 [ 571682]   WARN - #c.i.u.x.Binding - no accessors for org.jetbrains.idea.perforce.perforce.ConnectionId
 2023-05-16 21:26:42,951 [ 584726]   WARN - #c.i.e.p.OSProcessHandler - Process has been already terminated: /home/thivmcthiv/.cargo/bin/cargo check --bin egui_stego_wav --message-format=json --no-default-features --tests
 2023-05-16 21:27:04,491 [ 606266]   WARN - #c.i.e.p.OSProcessHandler - Process has been already terminated: /home/thivmcthiv/.cargo/bin/cargo check --bin egui_stego_wav --message-format=json --no-default-features --tests
