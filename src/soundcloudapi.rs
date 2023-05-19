@@ -1,11 +1,11 @@
-use reqwest::blocking::{multipart, Client};
+use reqwest::blocking::{multipart};
 use std::fs::File;
-use std::path::Path;
+
 
 pub fn upload_to_soundcloud(
     output_file: &str,
     message: &str,
-    client_id: &str,
+    _client_id: &str,
     oauth_token: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let url = format!(
