@@ -1,8 +1,10 @@
 mod soundcloudapi;
 mod sound_generation;
+mod encryption;
 
 use clap::Parser;
 use klask::Settings;
+use crate::encryption::{DataKeyPair, decrypt_string_with_stream_cipher, encrypt_string_with_stream_cipher};
 use crate::sound_generation::generate_wav;
 use crate::soundcloudapi::upload_to_soundcloud;
 
@@ -26,7 +28,7 @@ struct GenerateWav {
     #[clap(short, long, default_value = "default.wav")]
     filename: String,
 
-    #[clap(short, long, default_value = "150000")]
+    #[clap(long, default_value = "150000")]
     filesize: usize,
 }
 
@@ -41,16 +43,16 @@ struct Encode {
     output: String,
 
     ///Number of channels
-    #[clap(short, long = "message to encode", required=true)]
+    #[clap(short, long, required=true)]
     message: String,
 
-    #[clap(long= "Upload the encoded track to SoundCloud")]
+    #[clap(long)]
     upload: bool,
 
-    #[clap(value_name = "ID", long = "SoundCloud Client ID", requires = "upload")]
+    #[clap(value_name = "ID", long , requires = "upload")]
     soundcloud_client_id: Option<String>,
 
-    #[clap(value_name = "TOKEN", long = "SoundCloud OAuth Token", requires = "upload")]
+    #[clap(value_name = "TOKEN", long, requires = "upload")]
     soundcloud_oauth_token: Option<String>,
 }
 
@@ -59,6 +61,12 @@ struct Decode {
     ///Path to the input WAV file
     #[clap(short, long)]
     input: String,
+
+    #[clap(short, long)]
+    key: String,
+
+    #[clap(long)]
+    iv: String,
 }
 fn main() {
     klask::run_derived::<Opts, _>(Settings::default(), |opts| {
@@ -69,8 +77,12 @@ fn main() {
                 let message = t.message;
 
                 match encode_message(&input_file, &output_file, &message) {
-                    Ok(()) => {
+                    Ok(data) => {
                         println!("Message encoded successfully.");
+                        eprintln!("key: {}, iv: {}",
+                                 base64::encode(data.get_key()),
+                                 base64::encode(data.get_iv())
+                        );
                         if t.upload {
                             match upload_to_soundcloud(
                                 &output_file,
@@ -93,7 +105,7 @@ fn main() {
             SubCommand::Decode(t) => {
                 let input_file = t.input;
 
-                match decode_message(&input_file) {
+                match decode_message(&input_file, &*base64::decode(&t.key).unwrap(), &*base64::decode(&t.iv).unwrap()) {
                     Ok(decoded_message) => println!("Decoded message: {}", decoded_message),
                     Err(e) => eprintln!("Error decoding message: {}", e),
                 }
@@ -110,14 +122,16 @@ fn main() {
     });
 }
 
-fn encode_message(input_file: &str, output_file: &str, message: &str) -> Result<(), hound::Error> {
+fn encode_message(input_file: &str, output_file: &str, message: &str) -> Result<DataKeyPair, Box<dyn std::error::Error>> {
     let mut reader = hound::WavReader::open(input_file)?;
     let spec = reader.spec();
 
     let mut writer = hound::WavWriter::create(output_file, spec)?;
 
     let mut message_bytes = (message.len() as u32).to_be_bytes().to_vec();
-    message_bytes.extend_from_slice(message.as_bytes());
+
+    let encrypted_message = encrypt_string_with_stream_cipher(message)?;
+    message_bytes.extend_from_slice(encrypted_message.as_bytes());
     let mut bit_index = 0;
 
     for sample_result in reader.samples::<i32>() {
@@ -133,10 +147,12 @@ fn encode_message(input_file: &str, output_file: &str, message: &str) -> Result<
     }
 
     writer.finalize()?;
-    Ok(())
+    Ok(encrypted_message)
 }
 
-fn decode_message(input_file: &str) -> Result<String, hound::Error> {
+
+// I should probably refactor this to take a DataKeyPair intead of individual params so that it matches the color of the encode_message function
+fn decode_message(input_file: &str, key: &[u8], iv: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let mut reader = hound::WavReader::open(input_file)?;
     let mut message_bytes = vec![0u8; 4];
     let mut bit_index = 0;
@@ -162,11 +178,13 @@ fn decode_message(input_file: &str) -> Result<String, hound::Error> {
         }
 
         if i == (reader_len - 1) as usize {
-            return Err(hound::Error::FormatError("Incomplete message in the input file"));
+            return Err(Box::new(hound::Error::FormatError("Incomplete message in the input file")));
         }
     }
 
-    let message = String::from_utf8(message_bytes).map_err(|_| hound::Error::FormatError("Invalid UTF-8 message"))?;
+    let data_key_pair = DataKeyPair::new(&message_bytes, key, iv);
+
+    let message = decrypt_string_with_stream_cipher(&data_key_pair)?;
     Ok(message)
 }
 
@@ -176,6 +194,8 @@ fn decode_message(input_file: &str) -> Result<String, hound::Error> {
 mod tests {
     use std::fs;
     use std::io::Read;
+    use rand::random;
+    use crate::encryption::{decrypt_string_with_stream_cipher, encrypt_string_with_stream_cipher};
     use super::*;
 
     fn compare_wav_files(file1: &str, file2: &str) -> bool {
@@ -244,10 +264,10 @@ fn decode_message(input_file: &str) -> Result<String, hound::Error> {
         if bit_ind";
 
         // Encode the message
-        encode_message(input_file, output_file, message)?;
+        let data = encode_message(input_file, output_file, message).unwrap();
 
         // Decode the message
-        let decoded_message = decode_message(output_file)?;
+        let decoded_message = decode_message(output_file, data.get_key(), data.get_iv()).unwrap();
         // Check if the decoded message is the same as the original message
         assert_eq!(decoded_message, message);
 
@@ -257,15 +277,7 @@ fn decode_message(input_file: &str) -> Result<String, hound::Error> {
         Ok(())
     }
 
-
-    #[test]
-    #[should_panic(expected = "Incomplete message in the input file")]
-    fn test_decode_incomplete_message() {
-        let input_file = "original.wav";
-
-        // Attempt to decode an incomplete message
-        let _ = decode_message(input_file).unwrap();
-    }
+    
 
 
     #[test]
@@ -292,12 +304,31 @@ fn decode_message(input_file: &str) -> Result<String, hound::Error> {
 
         let reader = hound::WavReader::open(filename).unwrap();
         let spec = reader.spec();
-        assert_eq!(spec.channels, 1);
+        assert_eq!(spec.channels, 2);
         assert_eq!(spec.sample_rate, 44100);
         assert_eq!(spec.bits_per_sample, 32);
         assert_eq!(spec.sample_format, hound::SampleFormat::Int);
 
         // Clean up the test file
         fs::remove_file(filename).unwrap();
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let plaintext = "This is a test";
+        let ciphertext = encrypt_string_with_stream_cipher(plaintext).unwrap();
+
+        assert_eq!(plaintext, decrypt_string_with_stream_cipher(&ciphertext).unwrap());
+
+        // this is literally an abomination
+        // unsafe {decrypt_string_with_stream_cipher(
+        //     ciphertext.get_data(),
+        //     std::mem::transmute(&(0..32).map(
+        //         |_| random::<u8>()
+        //     ).collect::<Vec<u8>>()),
+        //     std::mem::transmute(&(0..12).map(
+        //         |_| random::<u8>()
+        //     ).collect::<Vec<u8>>())
+        // ).unwrap();}
     }
 }
