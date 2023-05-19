@@ -1,5 +1,5 @@
-use std::f32::consts::PI;
 use rand::Rng;
+use std::f32::consts::PI;
 
 pub fn generate_wav(filename: &str, target_file_size: usize) -> Result<(), hound::Error> {
     let header_size = 44; // WAV header size in bytes
@@ -9,7 +9,7 @@ pub fn generate_wav(filename: &str, target_file_size: usize) -> Result<(), hound
     let num_samples = target_audio_data_size / bytes_per_sample;
 
     let spec = hound::WavSpec {
-        channels: 2 ,
+        channels: 2,
         sample_rate: 44100,
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Int,
@@ -21,8 +21,8 @@ pub fn generate_wav(filename: &str, target_file_size: usize) -> Result<(), hound
     for _ in 0..num_samples {
         let t = rng.gen_range(0.0..1.0); // Random time value between 0 and 1
         let frequency = rng.gen_range(20.0..2000.0); // Random frequency between 20 Hz and 2000 Hz
-        // let sample = (t * frequency * 2.0 * PI).sin();
-        // let amplitude = i32::MAX as f32;
+                                                     // let sample = (t * frequency * 2.0 * PI).sin();
+                                                     // let amplitude = i32::MAX as f32;
         for _ in 0..spec.channels {
             let sample = (t * frequency * 2.0 * PI).sin();
             let amplitude = i32::MAX as f32 * 0.05;

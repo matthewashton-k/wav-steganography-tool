@@ -1,9 +1,9 @@
-use std::error::Error;
-use chacha20::{ChaCha20};
-use chacha20::cipher::{ KeyIvInit, StreamCipher};
+use chacha20::cipher::{KeyIvInit, StreamCipher};
+use chacha20::ChaCha20;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde_json::error::Category::Data;
+use std::error::Error;
 
 pub struct DataKeyPair {
     data: Vec<u8>,
@@ -46,7 +46,7 @@ pub fn encrypt_string_with_stream_cipher(plaintext: &str) -> Result<DataKeyPair,
 
     let mut data = plaintext.as_bytes().to_vec();
     cipher.apply_keystream(&mut data);
-    return Ok(DataKeyPair{
+    return Ok(DataKeyPair {
         data,
         key,
         iv: nonce,
@@ -54,12 +54,11 @@ pub fn encrypt_string_with_stream_cipher(plaintext: &str) -> Result<DataKeyPair,
 }
 
 pub fn decrypt_string_with_stream_cipher(data: &DataKeyPair) -> Result<String, Box<dyn Error>> {
-    let mut cipher = ChaCha20::new_from_slices(data.get_key(), data.get_iv()).map_err(|e| e.to_string())?;
+    let mut cipher =
+        ChaCha20::new_from_slices(data.get_key(), data.get_iv()).map_err(|e| e.to_string())?;
 
     let mut decrypted_data = data.get_data().to_vec();
     cipher.apply_keystream(&mut decrypted_data);
 
     Ok(String::from_utf8_lossy(&decrypted_data).into_owned())
 }
-
-
